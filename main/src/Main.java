@@ -1,12 +1,12 @@
 import javax.management.MBeanServerConnection;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 import javax.management.remote.*;
 import java.io.IOException;
 import java.lang.management.*;
-import java.net.MalformedURLException;
-import java.util.List;
 
-import static javafx.scene.input.KeyCode.T;
 import static javax.management.JMX.newMBeanProxy;
+import static javax.management.JMX.newMXBeanProxy;
 
 class Stat {
 	long used, cmtd;
@@ -38,43 +38,40 @@ class Stats {
 
 public class Main {
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, MalformedObjectNameException {
 
 
 		JMXServiceURL target = new JMXServiceURL("service:jmx:rmi:///jndi/rmi://localhost:5000/jmxrmi");
 		JMXConnector connector = JMXConnectorFactory.connect(target);
 		MBeanServerConnection connection = connector.getMBeanServerConnection();
+		RuntimeMXBean runtimeMXBean = newMXBeanProxy(connection, new ObjectName("java.lang:type=Runtime"), RuntimeMXBean.class);
 
-
-		List<MemoryPoolMXBean> memoryPoolMXBeans = ManagementFactory.getMemoryPoolMXBeans();
-		for (MemoryPoolMXBean poolMxBean : memoryPoolMXBeans) {
-			MemoryUsage usage = poolMxBean.getUsage();
-			System.out.printf("%s: used=%d, committed=%s\n", poolMxBean.getName(), usage.getUsed(), usage.getCommitted());
-
-//        MemoryMXBean memoryMBeanProxy = newMBeanProxy(connection, memoryMXBean.getObjectName(), MemoryMXBean.class);
-		}
+		System.out.println("VM name: " + runtimeMXBean.getName());
+		System.out.println();
 
 		Stats stats = new Stats();
-		stats.codeCache = getStats(memoryPoolMXBeans, "Code Cache");
-		stats.compressedClassSpace = getStats(memoryPoolMXBeans, "Compressed Class Space");
-		stats.metaspace = getStats(memoryPoolMXBeans, "Metaspace");
-		stats.eden = getStats(memoryPoolMXBeans, "PS Eden Space");
-		stats.tenured = getStats(memoryPoolMXBeans, "PS Old Gen");
-		stats.survivor = getStats(memoryPoolMXBeans, "PS Survivor Space");
+		stats.codeCache = getStat(connection, "java.lang:type=MemoryPool,name=Code Cache");
+		stats.compressedClassSpace = getStat(connection, "java.lang:type=MemoryPool,name=Compressed Class Space");
+		stats.metaspace = getStat(connection, "java.lang:type=MemoryPool,name=Metaspace");
+		stats.eden = getStat(connection, "java.lang:type=MemoryPool,name=PS Eden Space");
+		stats.tenured = getStat(connection, "java.lang:type=MemoryPool,name=PS Old Gen");
+		stats.survivor = getStat(connection, "java.lang:type=MemoryPool,name=PS Survivor Space");
 
-		System.out.println(stats);
+		ClassLoadingMXBean classLoadingMXBean = newMXBeanProxy(connection, new ObjectName("java.lang:type=ClassLoading"), ClassLoadingMXBean.class);
+
+		System.out.println("lcss\tcacheu\tcacec\tcompu\tcompc\tmetau\tmetac\tedenu\tedenc\toldu\toldc\tsurvu\tsurvc");
+		System.out.println(classLoadingMXBean.getLoadedClassCount() + "\t" + stats);
 
 	}
 
-	private static Stat getStats(List<MemoryPoolMXBean> memoryPoolMXBeans, String name) {
+	private static Stat getStat(MBeanServerConnection connection, String objectName) throws MalformedObjectNameException {
+		MemoryPoolMXBean memoryPoolMXBean = newMXBeanProxy(connection, new ObjectName(objectName), MemoryPoolMXBean.class);
 		Stat stat = new Stat();
-		for (MemoryPoolMXBean poolMxBean : memoryPoolMXBeans) {
-			MemoryUsage usage = poolMxBean.getUsage();
-			if (poolMxBean.getName().equals(name)) {
-				stat.cmtd = usage.getCommitted();
-				stat.used = usage.getUsed();
-			}
-		}
+		MemoryUsage usage = memoryPoolMXBean.getUsage();
+		stat.cmtd = usage.getCommitted();
+		stat.used = usage.getUsed();
 		return stat;
 	}
+
+
 }
